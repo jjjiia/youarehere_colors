@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Colors Test1</title>
+		<script src="http://d3js.org/d3.v3.min.js"></script>
+		<script src="http://d3js.org/topojson.v1.min.js"></script>
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+		<link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.4/themes/smoothness/jquery-ui.css" />
+		<link href="//netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css" rel="stylesheet">
+		<script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.4/jquery-ui.min.js"></script>
+		<link rel="stylesheet" href="streetviewcolor.css"/>
+    </head>
+    <body>
+		
+		<div id = "title">Colors Test</div> 
+		<div id = "subtitle"><strong></strong></div>
+		<div id = "label1">Occurance of Color in each image</div>
+		
+		<div id = "barchart">
+			<div id="slider"></div>
+		</div>
+		<div id = "mapContainer"></div>
+		
+		<!-- <div id = "filter"> 
+			<form>
+			<label><input type="radio" name="layout" value="human"><span style="color:#E53F21"> human</span></label><br/>
+    		<label><input type="radio" name="layout" value="machine"><span style="color:#4776DB"> machine</span></label><br/>
+    		<label><input type="radio" name="layout" value="all"><span style="color:#000000"> all</span></label>
+			
+			</form>-->
+		</div>
+
+		<div id="footer">
+	        <span id="data-source" class='footer-highlight'> Data Source</span>
+	    </div>
+
+	    <div id='data-lightbox'>
+		    <div id='lightbox-close' class="glyphicon glyphicon-remove"></div>
+			add text here
+		</div>
+
+		<p id="noise_stats"></p>
+		<p id = "location_stats"></p>
+	<script type="text/javascript">
+	var w = 80;
+	var h = 400;
+	var padding = 40;
+	var svg2;
+
+	var dataset = null;
+	var bounded_data = [];
+	var svg;
+	var projection;
+	var lower = 0;		
+	var upper = 900;
+	var geoJSON;
+	var path;
+	var lightBoxShown = false;
+
+//redcount,redcount,redcount,redcount,redcount,redcount,redcount,total,lat,lng
+
+	d3.json('nyc-borough-boundaries-polygon.geojson',function(geojson){
+		geoJSON = geojson;
+		initializeSVG();
+		bindHandlers();
+				
+		d3.csv('NewYork5.csv', function(data){
+			dataset = data;
+			
+			bound_data(lower,upper);
+			generateVis();
+			generateMap();
+			
+			initializeSlider()
+			
+		});
+
+	})
+	function bindHandlers(){
+		$('#data-source').click(function(){
+		    lightBoxShown = true;
+		    $('#mapSVG').css('opacity',0.3);
+
+		    var windowWidth = $(window).width();
+		    var windowHeight = $(window).height();
+		    var selfWidth = $(this).width(); var selfHeight = $(this).height();
+		    var moveX = 0.4*(windowWidth - selfWidth);
+		    var moveY = 0.35*(windowHeight - selfHeight);
+
+		    $('#data-lightbox').animate({
+		        'opacity':1.0}, 1500
+		    );
+		   });
+
+		  $('#mapSVG').click(function(){
+		      closeLightBox();
+		  });
+
+		  $('#lightbox-close').click(function(){
+		    closeLightBox();
+		});
+
+//		d3.select("input[value=\"human\"]").on("click", function(){ filter_data('human');});
+//		d3.select("input[value=\"machine\"]").on("click",function(){ filter_data('machine')});
+//		d3.select("input[value=\"all\"]").on("click", function(){filter_data('all')});
+	}
+
+	function closeLightBox(){
+	  if (lightBoxShown){
+	      $('#data-lightbox').animate({
+	        'opacity':0.0}, 'fast'
+	      );
+
+	      $('#mapSVG').animate({'opacity':1.0},'slow');
+	      lightBoxShown = false;
+	    };
+	}
+
+	function bound_data(lower, upper){
+		
+		bounded_data = [];
+		for(var i in dataset){
+			var frequency = parseFloat(dataset[i].redcount);
+			if (frequency < upper && frequency > lower){
+				bounded_data.push(dataset[i])
+			}
+		}
+		console.log(bounded_data,bounded_data.length);
+		$('#mapSVG').empty();
+		
+		generateMap();
+		drawPolygon();
+	}
+	
+	function initializeSlider(){
+		$("#slider").slider({
+			orientation:"vertical",
+			range:true,
+			values:[0,100],
+			slide:function (event, ui){
+				
+				var maxHeight = $('#barchart').height();
+				var lowerValue = sliderScale(ui.values[0]);
+				var upperValue = sliderScale(ui.values[1]);
+				console.log(lowerValue, upperValue);
+				bound_data(lowerValue, upperValue);
+				
+			}
+		});
+	}
+	
+
+	function filter_data(selected_category){
+		// works for radio buttons
+		svg.selectAll("rect").each(function(d){
+			if (d.category ==selected_category){d3.select(this).transition().duration(2000).style('opacity', 0.1);}
+			else if (selected_category == 'all'){d3.select(this).transition().duration(2000).style('opacity', 0.1);}
+			else {d3.select(this).transition().duration(2000).style('opacity', 0.0);}
+		});
+		svg2.selectAll("rect").each(function(d){
+			if (d.category ==selected_category){d3.select(this).transition().duration(2000).style('opacity', 0.1);}
+			else if (selected_category == 'all'){d3.select(this).transition().duration(2000).style('opacity', 0.1);}
+			else {d3.select(this).transition().duration(2000).style('opacity', 0.0);}
+		});
+	}
+	
+	
+	var sliderScale = d3.scale.linear()
+	.domain([0,100])
+	.range([0,850]);
+	
+	
+	var yScale = d3.scale.linear()
+		.domain([0,160000])
+		.range([h-20,10]);
+		
+		
+	function generateVis(){
+		console.log("generate")
+		console.log("scale")
+		
+		var rect = svg2.selectAll("rect")
+			.data(dataset)
+			.enter()
+			.append("rect")
+			.attr("width",20)
+			.attr("x",40)			
+			.attr("y",function(d){return yScale(parseFloat(d.redcount))})
+			.attr("height", 2)
+			.attr("fill", "#f00")
+			.attr("opacity",0.01)
+			.on('mouseover', function(d){
+				$('#location_stats').html(d.lat + " " + d.lng);
+			})
+			.on('mouseout', function(d){
+				$('#location_stats').html('');
+			});
+			
+		var yAxis = d3.svg.axis()
+			.scale(yScale)
+			.orient("left")
+			.ticks(8);
+			svg2.append("g")
+			.attr("class", "axis")
+			.attr("transform", "translate("+padding+",0)")
+			.call(yAxis);
+	};
+	
+	
+	function initializeSVG(){
+		var w = 300;
+		var h = 400;
+		svg = d3.select("body")
+					.append("svg")
+					.attr("width", w)
+					.attr("height", h)
+					.attr("id", 'mapSVG')
+			   	 	.attr("class", "mapContainer");
+					
+		//Define map projection
+		projection = d3.geo.mercator()
+	   						   .center([-74.01, 40.762])
+							   .translate([w/2, h/2])
+							   .scale([620000]);
+		//Define path generator
+		path = d3.geo.path()
+						 .projection(projection);
+						 
+		svg2 = d3.select("#barchart")
+				.append("svg")
+				.attr("id",'barSVG')
+				.attr("width", w)
+				.attr("height", h);
+	}
+
+	var rScale = d3.scale.linear()
+		.domain([0,160000])
+		.range([0,10]);
+		
+				
+	function generateMap(){
+		console.log("generate map")
+		svg.selectAll("rect")
+		.data(dataset)
+		.enter()
+		.append("circle")
+		.attr("cx", function(d){return projection([parseFloat(d.lng), parseFloat(d.lat)])[0];})
+		//.attr("cy", 20)
+		.attr("cy", function(d){return projection([parseFloat(d.lng), parseFloat(d.lat)])[1];})
+		//.attr("r", 3)
+		.attr("r", function(d){return rScale(parseFloat(d.redcount))})
+		//.attr("width", 2)
+		.attr("fill","#f00")
+		.style("opacity", 0.05);
+	};
+	
+	function drawPolygon(){
+		var boroughs = svg.selectAll('.borough')
+		.append("g")
+		.data(geoJSON.features)
+		.enter()
+		.append('path')
+		.attr('class', 'borough')
+		.attr('fill', 'white')
+		.attr('fill-opacity', 0.0)
+		.attr('stroke', 'black')
+		.attr('stroke-opacity', 0.5)
+		.attr('z-index', '10')
+		.attr('d', path);
+	}
+	
+	
+		</script>
+    </body>
+</html>

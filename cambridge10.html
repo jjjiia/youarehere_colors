@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Colors Test1</title>
+		<script src="http://d3js.org/d3.v3.min.js"></script>
+		<script src="http://d3js.org/topojson.v1.min.js"></script>
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+		<link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.4/themes/smoothness/jquery-ui.css" />
+		<link href="//netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css" rel="stylesheet">
+		<script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.4/jquery-ui.min.js"></script>
+		<link rel="stylesheet" href="streetviewcolor.css"/>
+    </head>
+    <body>
+		
+		<div id = "title">HUE</div> 
+		<div id = "subtitle"><strong></strong></div>
+		
+		<div id = "gradient">
+		</div>
+		<div id = "mapContainer"></div>
+	</div>
+
+		
+
+	<script type="text/javascript">
+	var w = 80;
+	var h = 400;
+	var padding = 40;
+	var svg2;
+
+	var dataset = null;
+	var bounded_data = [];
+	var svg;
+	var projection;
+	var geoJSON;
+	var path;
+	var lightBoxShown = false;
+	
+	//each group is 6 degrees
+	var highlightHueMin = 46;
+	var highlightHueMax = 50;
+	
+	var minHueColor = d3.hsl(highlightHueMin*6,.5,.5)
+	var maxHueColor = d3.hsl(highlightHueMax*6,.5,.5)
+
+	var yScale = d3.scale.linear()
+		.domain([0,409600])
+		.range([h-20,10]);
+	
+	d3.selectAll("#title").html("HUE: "+String(highlightHueMin*6)+" to "+String(highlightHueMax*6))
+	d3.json('nyc-borough-boundaries-polygon.geojson',function(geojson){
+		geoJSON = geojson;
+		initializeSVG();
+				
+		d3.csv('cambridge_huegroups/cambridge_huegroups_1_23.csv', function(data){
+			dataset = data;
+			
+			bound_data();
+			generateMap();
+			});
+
+	})
+
+	function bound_data(){
+		
+		bounded_data = [];
+		for(var i in dataset){
+			var frequency = dataset[i]["huegroup"];
+			frequency = JSON.parse(frequency)
+			//console.log(frequency)
+			bounded_data.push(dataset[i])
+		}
+		//console.log(bounded_data,bounded_data.length);
+		$('#mapSVG').empty();
+		
+		generateMap();
+		drawPolygon();
+		generateGradient()
+		
+	}
+
+
+	
+	function generateGradient(){
+		var w = 210,
+		    h = 210;
+
+		var svg = d3.select("body").append("svg:svg")
+		    .attr("width", w)
+		    .attr("height", h)
+			.attr("class", "gradient");;
+
+		var gradient = svg.append("svg:defs")
+		  .append("svg:linearGradient")
+		    .attr("id", "gradient")
+		    .attr("x1", "0%")
+		    .attr("y1", "0%")
+		    .attr("x2", "100%")
+		    .attr("y2", "100%")
+		    .attr("spreadMethod", "pad");
+
+		gradient.append("svg:stop")
+		    .attr("offset", "0%")
+		    .attr("stop-color", minHueColor)
+		    .attr("stop-opacity", 1);
+
+		gradient.append("svg:stop")
+		    .attr("offset", "100%")
+		    .attr("stop-color",  maxHueColor)
+		    .attr("stop-opacity", 1);
+
+		svg.append("svg:rect")
+		    .attr("width", w)
+		    .attr("height", h)
+		    .style("fill", "url(#gradient)");
+	}
+	
+	
+	function initializeSVG(){
+		var w = 300;
+		var h = 400;
+		svg = d3.select("body")
+					.append("svg")
+					.attr("width", w)
+					.attr("height", h)
+					.attr("id", 'mapSVG')
+			   	 	.attr("class", "mapContainer");
+		//Define map projection
+		projection = d3.geo.mercator()
+	   						   .center([-71.152628, 42.395479])
+							   .translate([w/2, h/2])
+							   .scale([600000]);
+		//Define path generator
+		path = d3.geo.path()
+						 .projection(projection);
+						 
+		svg2 = d3.select("#barchart")
+				.append("svg")
+				.attr("id",'barSVG')
+				.attr("width", w)
+				.attr("height", h);
+	}
+	
+	var hueDomainScale = highlightHueMax- highlightHueMin
+	
+	var rScale = d3.scale.linear()
+		.domain([0,80000*hueDomainScale])
+		.range([0,30]);
+		
+				
+	function generateMap(){
+		//console.log("generate map")
+		svg.selectAll("circle")
+		.data(dataset)
+		.enter()
+		.append("circle")
+		.attr("cx", function(d){
+			var projectedCx = projection([parseFloat(d.lng), parseFloat(d.lat)])[0];
+			//console.log("x", projectedCx)
+			return projectedCx
+		})
+		//.attr("cy", 20)
+		.attr("cy", function(d){
+			var projectedCy = projection([parseFloat(d.lng), parseFloat(d.lat)])[1];
+			//return projectedCy
+			//console.log("y", projectedCy)
+			return projectedCy
+		})
+		//.attr("r", 3)
+		.attr("r", function(d){
+		//	console.log(radius)
+		var values = JSON.parse(d["huegroup"])
+		var sum = 0
+		for(var j=highlightHueMin; j<highlightHueMax;j++){
+			sum = sum + values[j]
+		}
+			var radius = rScale(sum)
+			return radius
+		})
+		//.attr("width", 1)
+		//.attr("width", 2)
+		.attr("fill",function(d){
+			var middleH = (highlightHueMax*6 + highlightHueMin*6)/2
+			return d3.hsl(middleH,.5,.5)
+			//return "#000"
+		})
+		.style("opacity", .2);
+	};
+	
+	function drawPolygon(){
+		var boroughs = svg.selectAll('.borough')
+		.append("g")
+		.data(geoJSON.features)
+		.enter()
+		.append('path')
+		.attr('class', 'borough')
+		.attr('fill', 'white')
+		.attr('fill-opacity', 0.0)
+		.attr('stroke', 'black')
+		.attr('stroke-opacity', 0.5)
+		.attr('z-index', '10')
+		.attr('d', path);
+	}
+		</script>
+    </body>
+</html>
